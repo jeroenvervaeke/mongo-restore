@@ -1,62 +1,67 @@
-// Copyright 2024 MongoDB Inc
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package main
 
 import (
-	"fmt"
 	"os"
 
-	"atlas-cli-plugin/internal/cli/echo"
-	"atlas-cli-plugin/internal/cli/hello"
-	"atlas-cli-plugin/internal/cli/printenv"
-	"atlas-cli-plugin/internal/cli/sharedlibrary"
-	"atlas-cli-plugin/internal/cli/stdinreader"
-
-	"github.com/spf13/cobra"
+	"github.com/mongodb/mongo-tools/common/log"
+	"github.com/mongodb/mongo-tools/common/signals"
+	"github.com/mongodb/mongo-tools/common/util"
+	"github.com/mongodb/mongo-tools/mongorestore"
 )
 
+var (
+	VersionStr = "0.0.0-POC"
+	GitCommit  = "build-without-git-commit"
+)
+
+// MongoRestore main, copied from: https://github.com/mongodb/mongo-tools/blob/0fe8aa034b5152a9d03c74568e1add529d47a52c/mongorestore/main/mongorestore.go
 func main() {
-	exampleCmd := &cobra.Command{
-		Use:   "example",
-		Short: "Root command of the atlas cli plugin example",
+	// Only modification needed pass os.Args[2:] instead of os.Args[1:], since this is a subcommand now
+	opts, err := mongorestore.ParseOptions(os.Args[1:], VersionStr, GitCommit)
+
+	if err != nil {
+		log.Logvf(log.Always, "error parsing command line options: %s", err.Error())
+		log.Logvf(log.Always, util.ShortUsage("mongorestore"))
+		os.Exit(util.ExitFailure)
 	}
 
-	exampleCmd.AddCommand(
-		hello.Builder(),
-		echo.Builder(),
-		printenv.Builder(),
-		stdinreader.Builder(),
-		sharedlibrary.Builder(),
-	)
+	// print help or version info, if specified
+	if opts.PrintHelp(false) {
+		return
+	}
 
-	completionOption := &cobra.CompletionOptions{
-		DisableDefaultCmd: true,
-		DisableNoDescFlag: true,
-		DisableDescriptions: true,
-		HiddenDefaultCmd: true,
+	if opts.PrintVersion() {
+		return
 	}
-	rootCmd := &cobra.Command{
-		DisableFlagParsing: true,
-		DisableAutoGenTag: true,
-		DisableSuggestions: true,
-		CompletionOptions: *completionOption,
-	}
-	rootCmd.AddCommand(exampleCmd)
 
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+	restore, err := mongorestore.New(opts)
+	if err != nil {
+		log.Logvf(log.Always, err.Error())
+		os.Exit(util.ExitFailure)
 	}
+	defer restore.Close()
+
+	finishedChan := signals.HandleWithInterrupt(restore.HandleInterrupt)
+	defer close(finishedChan)
+
+	result := restore.Restore()
+	if result.Err != nil {
+		log.Logvf(log.Always, "Failed: %v", result.Err)
+	}
+
+	if restore.ToolOptions.WriteConcern.Acknowledged() {
+		log.Logvf(
+			log.Always,
+			"%v document(s) restored successfully. %v document(s) failed to restore.",
+			result.Successes,
+			result.Failures,
+		)
+	} else {
+		log.Logvf(log.Always, "done")
+	}
+
+	if result.Err != nil {
+		os.Exit(util.ExitFailure)
+	}
+	os.Exit(util.ExitSuccess)
 }

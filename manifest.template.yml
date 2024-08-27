@@ -1,10 +1,10 @@
-name: atlas-cli-plugin-example
-description: this is an example plugin
+name: atlas-cli-mongo-restore
+description: MongoRestore plugin
 version: $VERSION
 github:
     owner: $GITHUB_REPOSITORY_OWNER
     name: $GITHUB_REPOSITORY_NAME
 binary: binary
 commands: 
-    example: 
-        description: Root command of the atlas cli plugin example
+    mongo-restore: 
+        description: restore and backup your mongodbgit 
