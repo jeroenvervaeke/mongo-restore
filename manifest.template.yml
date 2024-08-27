@@ -1,0 +1,10 @@
+name: atlas-cli-plugin-example
+description: this is an example plugin
+version: $VERSION
+github:
+    owner: $GITHUB_REPOSITORY_OWNER
+    name: $GITHUB_REPOSITORY_NAME
+binary: binary
+commands: 
+    example: 
+        description: Root command of the atlas cli plugin example
